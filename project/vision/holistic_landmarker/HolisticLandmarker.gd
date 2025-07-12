@@ -34,61 +34,71 @@ func _init_task() -> void:
 	task_runner.initialize(config, callback)
 	super()
 
-func _process_image(image: Image) -> void:
+func _process_image(input_img: Image) -> void:
 	var input_image := MediaPipeImage.new()
-	input_image.set_image(image)
+	input_image.set_image(input_img)
 	var packet := input_image.get_packet()
 	var outputs := task_runner.process({"image_in": packet})
-	self.image = image
+	self.image = input_img
 	show_result(outputs)
 
-func _process_video(image: Image, timestamp_ms: int) -> void:
+func _process_video(input_img: Image, timestamp_ms: int) -> void:
 	var input_image := MediaPipeImage.new()
-	input_image.set_image(image)
+	input_image.set_image(input_img)
 	var packet := input_image.get_packet()
 	packet.timestamp = timestamp_ms
 	var outputs := task_runner.process({"image_in": packet})
-	self.image = image
+	self.image = input_img
 	show_result(outputs)
 
-func _process_camera(image: MediaPipeImage, timestamp_ms: int) -> void:
-	var packet := image.get_packet()
+func _process_camera(input_img: MediaPipeImage, timestamp_ms: int) -> void:
+	var packet := input_img.get_packet()
 	packet.timestamp = timestamp_ms
 	task_runner.send({"image_in": packet})
-	self.image = image.get_image()
+	self.image = input_img.get_image()
 
 func show_result(outputs: Dictionary) -> void:
-	if outputs.has("pose_landmarks"):
-		var packet: MediaPipePacket = outputs["pose_landmarks"]
-		if not packet.is_empty():
-			var pose_landmarks: MediaPipeProto = packet.get()
-			var landmarks: Array = pose_landmarks.get("landmark")
-			draw_landmarks(landmarks, Color.GREEN)
+	var classification: Array = []
+	# if outputs.has("pose_landmarks"):
+	# 	var packet: MediaPipePacket = outputs["pose_landmarks"]
+	# 	if not packet.is_empty():
+	# 		var pose_landmarks: MediaPipeProto = packet.get()
+	# 		var landmarks: Array = pose_landmarks.get("landmark")
+	# 		draw_landmarks(landmarks, Color.GREEN)
 	if outputs.has("face_landmarks"):
 		var packet: MediaPipePacket = outputs["face_landmarks"]
 		if not packet.is_empty():
 			var face_landmarks: MediaPipeProto = packet.get()
 			var landmarks: Array = face_landmarks.get("landmark")
-			draw_landmarks(landmarks, Color.BLUE)
+			if typeof(landmarks) == TYPE_ARRAY and landmarks.size() > 0:
+				draw_landmarks(landmarks, Color.BLUE)
+			classification.append({"label": "Face"})
 	if outputs.has("left_hand_landmarks"):
 		var packet: MediaPipePacket = outputs["left_hand_landmarks"]
 		if not packet.is_empty():
 			var left_hand_landmarks: MediaPipeProto = packet.get()
 			var landmarks: Array = left_hand_landmarks.get("landmark")
-			draw_landmarks(landmarks, Color.RED)
+			if typeof(landmarks) == TYPE_ARRAY and landmarks.size() > 0:
+				draw_landmarks(landmarks, Color.RED)
+			classification.append({"label": "Left Hand"})
 	if outputs.has("right_hand_landmarks"):
 		var packet: MediaPipePacket = outputs["right_hand_landmarks"]
 		if not packet.is_empty():
 			var right_hand_landmarks: MediaPipeProto = packet.get()
 			var landmarks: Array = right_hand_landmarks.get("landmark")
-			draw_landmarks(landmarks, Color.YELLOW)
+			if typeof(landmarks) == TYPE_ARRAY and landmarks.size() > 0:
+				draw_landmarks(landmarks, Color.YELLOW)
+			classification.append({"label": "Right Hand"})
 	if outputs.has("face_blendshapes"):
 		var packet: MediaPipePacket = outputs["face_blendshapes"]
 		if not packet.is_empty():
 			var face_blendshapes: MediaPipeProto = packet.get()
-			var classification: Array = face_blendshapes.get("classification")
-			show_blendshapes(classification)
+			var blendshapes: Array = face_blendshapes.get("classification")
+			if typeof(blendshapes) == TYPE_ARRAY and blendshapes.size() > 0:
+				for i in blendshapes.size():
+					classification.append(blendshapes[i])
 	update_image(image)
+	show_blendshapes(classification)
 
 func draw_landmarks(landmarks: Array, color: Color) -> void:
 	if image == null:
@@ -105,5 +115,7 @@ func show_blendshapes(classifications: Array) -> void:
 	for classification in classifications:
 		var score = classification.get("score")
 		var label = classification.get("label")
-		if score >= 0.5:
+		if score and score >= 0.5:
 			lbl_blendshapes.text += "%s: %.2f\n" % [label, score]
+		elif label and not score:
+			lbl_blendshapes.text += "%s\n" % label
